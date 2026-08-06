@@ -50,17 +50,23 @@ def _rrf_fuse(
     return fused
 
 
-def retrieve(index: dict[str, Any], query: str, k: int = 5) -> list[dict[str, Any]]:
+def retrieve(
+    index: dict[str, Any],
+    query: str,
+    k: int = 5,
+    embedder: Embedder | None = None,
+) -> list[dict[str, Any]]:
     """Return the top-k chunks for a query: [{path, chunk, score}] sorted by
-    relevance (highest first). Empty query returns []."""
+    relevance (highest first). Empty query returns []"""
     if not query.strip():
         return []
 
     query_tokens = _tokenise(query)
 
-    # Dense: embed the query with the same local model.
-    embedder = Embedder()
-    query_vector = np.asarray(list(embedder.query_embed(query))[0], dtype=np.float32)
+    # Dense: embed the query with the same local model. Reuse a shared
+    # embedder when provided (servers) to avoid reloading the model per call.
+    model = embedder if embedder is not None else Embedder()
+    query_vector = np.asarray(list(model.query_embed(query))[0], dtype=np.float32)
 
     dense = _dense_candidates(index, query_vector)[:_POOL_SIZE]
     lexical = _bm25_candidates(index, query_tokens)[:_POOL_SIZE]
