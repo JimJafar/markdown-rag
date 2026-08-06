@@ -1,2 +1,0 @@
-[console_scripts]
-markdown-rag = markdown_rag.cli:main
