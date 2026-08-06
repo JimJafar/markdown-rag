@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markdown-rag"
+version = "0.1.0"
+description = "RAG server for large structured markdown collections"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "markdown-it-py>=4",
+    "fastembed>=0.8",
+    "fastapi>=0.141",
+    "uvicorn>=0.52",
+    "numpy>=2",
+    "rank-bm25>=0.2",
+]
+
+[project.scripts]
+markdown-rag = "markdown_rag.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+markdown_rag = ["model_data/*"]

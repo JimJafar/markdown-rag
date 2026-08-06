@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: markdown-rag
+Version: 0.1.0
+Summary: RAG server for large structured markdown collections
+License: Apache-2.0
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: markdown-it-py>=4
+Requires-Dist: fastembed>=0.8
+Requires-Dist: fastapi>=0.141
+Requires-Dist: uvicorn>=0.52
+Requires-Dist: numpy>=2
+Requires-Dist: rank-bm25>=0.2
+Dynamic: license-file
+
+# markdown-rag
+A RAG server for large markdown collections

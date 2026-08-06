@@ -1,0 +1,6 @@
+markdown-it-py>=4
+fastembed>=0.8
+fastapi>=0.141
+uvicorn>=0.52
+numpy>=2
+rank-bm25>=0.2
