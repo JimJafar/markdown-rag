@@ -20,6 +20,11 @@ MODEL_NAME = "BAAI/bge-small-en-v1.5"
 #: Bundled model data shipped as package data (offline, no download).
 MODEL_DATA_DIR = Path(__file__).parent / "model_data"
 
+#: onnxruntime intra-op threads. Measured on a 20-core box: 20 threads reach
+#: ~24 vec/s peak, 8 threads ~20 vec/s (82% of peak) while leaving the rest
+#: of the machine usable for other work — the right default on a shared host.
+DEFAULT_THREADS = 8
+
 #: Tokenise for BM25: lowercase, split on non-alphanumeric runs.
 _TOKENISE_SPLIT = None
 
@@ -37,12 +42,18 @@ def _tokenise(text: str) -> list[str]:
 class Embedder:
     """Wraps fastembed with the bundled local model (offline)."""
 
-    def __init__(self, model_name: str = MODEL_NAME, model_dir: Path | None = MODEL_DATA_DIR) -> None:
+    def __init__(
+        self,
+        model_name: str = MODEL_NAME,
+        model_dir: Path | None = MODEL_DATA_DIR,
+        threads: int | None = DEFAULT_THREADS,
+    ) -> None:
         # Point fastembed directly at the bundled files: no download, no cache.
+        # threads=None explicitly opts into all cores (os.cpu_count()).
         self._model = TextEmbedding(
             model_name=model_name,
             specific_model_path=str(model_dir) if model_dir is not None else None,
-            threads=os.cpu_count() or 1,
+            threads=threads or os.cpu_count() or 1,
         )
 
     def embed(self, texts: Iterable[str]) -> list[np.ndarray]:
