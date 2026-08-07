@@ -18,7 +18,7 @@ pipx gives you an isolated install and a global `markdown-rag` command — no pe
 markdown-rag serve /path/to/your/vault
 ```
 
-The server indexes every `.md` file under the directory (recursively), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. For a vault of thousands of chunks the index rebuild takes seconds on restart — there is no persistent store.
+The server indexes every `.md` file under the directory (recursively), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. The index is rebuilt from scratch on every start — a few seconds for a small vault, a few minutes for a thousand-note one — and there is no persistent store.
 
 ```sh
 markdown-rag serve /path/to/vault --port 8080 --host 127.0.0.1

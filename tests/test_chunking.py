@@ -64,6 +64,54 @@ def test_relative_source_path(tmp_path):
     assert chunks[0]["path"].endswith("sub/note.md")
 
 
+# --- frontmatter shapes found in the real vault ---
+
+
+def test_frontmatter_inline_list(tmp_path):
+    p = make_file(
+        tmp_path,
+        "note.md",
+        "---\ntags: [ai, memory, project-idea]\ndate: 2026-07-05\n---\n\n# H\n\nBody.",
+    )
+    chunks = chunk_file(p)
+    assert chunks[0]["metadata"]["tags"] == ["ai", "memory", "project-idea"]
+
+
+def test_frontmatter_list_under_named_key(tmp_path):
+    p = make_file(
+        tmp_path,
+        "note.md",
+        "---\nrelated:\n  - \"[[north-star]]\"\n  - \"[[memory-architecture-rethink]]\"\ntags:\n  - clippings\n---\n\n# H\n\nBody.",
+    )
+    chunks = chunk_file(p)
+    assert chunks[0]["metadata"]["related"] == [
+        "[[north-star]]",
+        "[[memory-architecture-rethink]]",
+    ]
+    assert chunks[0]["metadata"]["tags"] == ["clippings"]
+
+
+def test_frontmatter_empty_key_then_list(tmp_path):
+    p = make_file(
+        tmp_path,
+        "note.md",
+        "---\nauthor:\n  - \"[[Kartikey Chauhan]]\"\n---\n\n# H\n\nBody.",
+    )
+    chunks = chunk_file(p)
+    assert chunks[0]["metadata"]["author"] == ["[[Kartikey Chauhan]]"]
+
+
+def test_frontmatter_scalar_tags_then_list_item_no_crash(tmp_path):
+    p = make_file(
+        tmp_path,
+        "note.md",
+        "---\ntags: project-idea\nstatus: living\nrelated:\n  - \"[[north-star]]\"\n---\n\n# H\n\nBody.",
+    )
+    chunks = chunk_file(p)
+    assert chunks[0]["metadata"]["related"] == ["[[north-star]]"]
+    assert chunks[0]["metadata"]["tags"] == "project-idea"
+
+
 # --- chunk_vault ---
 
 

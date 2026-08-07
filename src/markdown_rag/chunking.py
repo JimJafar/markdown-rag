@@ -21,31 +21,35 @@ def _parse_frontmatter(block: str) -> dict[str, Any]:
     """Parse a minimal YAML-like frontmatter block. Returns {} when malformed."""
     metadata: dict[str, Any] = {}
     current_key: str | None = None
-    list_mode = False
     for raw_line in block.strip().splitlines():
         line = raw_line.rstrip()
         if not line.strip():
             continue
-        indent = len(line) - len(line.lstrip())
-        if indent == 0 and ": " in line:
-            key, _, value = line.partition(": ")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            metadata[key] = value
-            current_key = key
-            list_mode = False
-        elif line.startswith("  - ") or line.lstrip().startswith("- "):
+        if line.lstrip().startswith("- "):
             value = line.strip().lstrip("- ").strip().strip('"').strip("'")
-            if list_mode and current_key is not None:
-                existing = metadata[current_key]
-                if isinstance(existing, list):
-                    existing.append(value)
-                else:
-                    metadata[current_key] = [existing, value]
+            if current_key is None:
+                continue
+            existing = metadata.get(current_key)
+            if isinstance(existing, list):
+                existing.append(value)
+            elif existing is None or existing == "":
+                metadata[current_key] = [value]
             else:
-                metadata.setdefault("tags", []).append(value)
-                current_key = "tags"
-                list_mode = True
+                metadata[current_key] = [existing, value]
+        elif ":" in line:
+            key, _, rest = line.partition(":")
+            key = key.strip()
+            value = rest.strip().strip('"').strip("'")
+            if value.startswith("[") and value.endswith("]"):
+                items = [
+                    item.strip().strip('"').strip("'")
+                    for item in value[1:-1].split(",")
+                    if item.strip()
+                ]
+                metadata[key] = items
+            else:
+                metadata[key] = value
+            current_key = key
     return metadata
 
 
