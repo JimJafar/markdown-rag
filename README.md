@@ -83,12 +83,9 @@ pipx inject markdown-rag fastembed-gpu                # swaps onnxruntime for th
 pipx inject markdown-rag nvidia-cudnn-cu12 nvidia-cublas-cu12 nvidia-cufft-cu12
 ```
 
-Install `fastembed-gpu` **after** the base install, as above — requesting both in one command resolves without error but silently leaves the CPU build in place; the startup log line is how you tell which you got. Then expose the NVIDIA libs to the loader when starting the server:
+Install `fastembed-gpu` **after** the base install, as above — requesting both in one command resolves without error but silently leaves the CPU build in place; the startup log line is how you tell which you got.
 
-```sh
-export LD_LIBRARY_PATH="$(echo $HOME/.local/share/pipx/venvs/markdown-rag/lib/python*/site-packages/nvidia/*/lib | tr ' ' ':')"
-markdown-rag serve /path/to/vault
-```
+No `LD_LIBRARY_PATH` needed: the server dlopens the bundled NVIDIA libs automatically at startup, so the CUDA provider finds cuDNN/cuBLAS out of the box. Embedding batches drop to 32 on GPU (fastembed's default 256 can overflow VRAM during attention on smaller cards); CPU keeps 256 for throughput.
 
 The CUDA/cuDNN versions must match what onnxruntime-gpu expects (CUDA 12 + cuDNN 9 for onnxruntime 1.28). On a machine whose system CUDA is newer (e.g. CUDA 13 in `/opt/cuda`), the pip NVIDIA packages supply the exact CUDA 12 libs onnxruntime looks for. Measured on an RTX 5060 Ti: ~840 vec/s vs ~24 vec/s CPU — a thousand-note vault indexes in seconds.
 
