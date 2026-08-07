@@ -37,7 +37,7 @@ def test_health_returns_ok(client):
     assert r.json() == {"status": "ok"}
 
 
-def test_retrieve_returns_chunks_sorted(client):
+def test_retrieve_returns_documents_sorted(client):
     r = client.get("/retrieve", params={"q": "apples and fruit", "k": 2})
     assert r.status_code == 200
     body = r.json()
@@ -45,8 +45,9 @@ def test_retrieve_returns_chunks_sorted(client):
     assert len(body) == 2
     scores = [item["score"] for item in body]
     assert scores == sorted(scores, reverse=True)
-    assert set(body[0]) == {"path", "chunk", "score"}
+    assert set(body[0]) == {"title", "path", "text", "score", "citations"}
     assert body[0]["path"].endswith("fruit.md")
+    assert "Apples are round" in body[0]["text"]
 
 
 def test_retrieve_post_accepts_json(client):

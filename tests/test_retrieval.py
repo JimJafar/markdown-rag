@@ -1,4 +1,4 @@
-"""Unit tests for hybrid BM25 + dense retrieval via RRF."""
+"""Unit tests for document-level hybrid retrieval (dense-primary)."""
 
 from pathlib import Path
 
@@ -28,31 +28,50 @@ def index(tmp_path_factory):
     return build_index(chunk_vault(d))
 
 
-def test_returns_top_k_sorted_by_score(index):
+def test_returns_documents_not_chunks(index):
     results = retrieve(index, "apples and fruit", k=2)
     assert len(results) == 2
+    r = results[0]
+    # document shape: title/path/text/score/citations
+    assert set(r) == {"title", "path", "text", "score", "citations"}
+    assert r["path"].endswith("fruit.md")
+    # text is the full document, not a fragment
+    assert "Apples are round" in r["text"]
+
+
+def test_returns_top_k_sorted_by_score(index):
+    results = retrieve(index, "apples and fruit", k=2)
     scores = [r["score"] for r in results]
     assert scores == sorted(scores, reverse=True)
 
 
 def test_semantic_query_finds_fruit(index):
     results = retrieve(index, "what grows on trees and is round", k=3)
-    assert results[0]["chunk"].startswith("Apples are round")
+    assert results[0]["path"].endswith("fruit.md")
 
 
-def test_lexical_query_finds_cars(index):
+def test_lexical_query_still_finds_cars(index):
+    # Exact-term query must still work via BM25 supporting pass.
     results = retrieve(index, "cars engines wheels", k=3)
-    assert results[0]["chunk"].startswith("Cars have engines")
+    assert results[0]["path"].endswith("cars.md")
 
 
-def test_result_shape_has_path_chunk_score(index):
+def test_citations_are_chunks_with_scores(index):
+    r = retrieve(index, "apples and fruit", k=1)[0]
+    assert len(r["citations"]) > 0
+    c = r["citations"][0]
+    assert set(c) == {"chunk", "score"}
+    assert c["chunk"].startswith("Apples are round")
+    assert c["score"] > 0
+
+
+def test_title_from_frontmatter_or_filename(index):
     r = retrieve(index, "fruit", k=1)[0]
-    assert set(r) == {"path", "chunk", "score"}
-    assert r["path"].endswith("fruit.md")
+    # no frontmatter in fixture -> falls back to filename stem
+    assert r["title"] == "fruit"
 
 
-def test_k_larger_than_corpus(index):
-    # Asking for more than the corpus returns everything, sorted.
+def test_k_larger_than_documents(index):
     results = retrieve(index, "fruit", k=99)
     assert len(results) == 3
 
