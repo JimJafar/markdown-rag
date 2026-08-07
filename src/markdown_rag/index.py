@@ -6,6 +6,7 @@ markdown chunks using a bundled local ONNX model — fully offline, CPU/RAM.
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 from pathlib import Path
@@ -16,6 +17,66 @@ import onnxruntime
 from fastembed import TextEmbedding
 
 from markdown_rag.chunking import chunk_vault
+
+
+#: pip nvidia wheel names whose .so libs onnxruntime-gpu dlopens at session
+#: creation (cuDNN, cuBLAS, cuFFT, NVRTC, NVJITLink).
+_NVIDIA_WHEELS = (
+    "nvidia-cudnn-cu12",
+    "nvidia-cublas-cu12",
+    "nvidia-cufft-cu12",
+    "nvidia-cuda-nvrtc-cu12",
+    "nvidia-nvjitlink-cu12",
+)
+
+
+def _preload_bundled_nvidia_libs() -> None:
+    """dlopen the nvidia CUDA libs bundled in the same site-packages so the
+    onnxruntime CUDA provider can find cuDNN/cuBLAS without the user setting
+    LD_LIBRARY_PATH. Loading by absolute path registers the SONAMEs in the
+    process, so onnxruntime's later dlopen of e.g. libcudnn.so.9 succeeds.
+    No-op when no nvidia wheels are installed (plain CPU install)."""
+    try:
+        from importlib.metadata import PackageNotFoundError, distribution
+    except ImportError:  # pragma: no cover - python <3.10
+        return
+
+    lib_paths: list[Path] = []
+    for wheel in _NVIDIA_WHEELS:
+        try:
+            dist = distribution(wheel)
+        except PackageNotFoundError:
+            continue
+        for f in dist.files or ():
+            p = Path(str(dist.locate_file(f)))
+            # Match lib*.so* (versioned SONAMEs like libcudnn.so.9 have
+            # suffixes .9, not .so).
+            if p.name.startswith("lib") and ".so" in p.name:
+                lib_paths.append(p)
+
+    if not lib_paths:
+        return
+
+    # Expose the dirs to the loader too (belt and braces for subprocesses).
+    dirs = sorted({str(p.parent) for p in lib_paths})
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    os.environ["LD_LIBRARY_PATH"] = ":".join(dirs + ([existing] if existing else []))
+
+    # Load in dependency order (nvjitlink first, cudnn last). Best effort:
+    # a missing driver lib (libcuda) must not crash the import.
+    order = {"nvidia-nvjitlink-cu12": 0, "nvidia-cublas-cu12": 1, "nvidia-cufft-cu12": 2, "nvidia-cuda-nvrtc-cu12": 3, "nvidia-cudnn-cu12": 4}
+    lib_paths.sort(key=lambda p: next((order.get(w, 9) for w in _NVIDIA_WHEELS if w in str(p)), 9))
+    for p in lib_paths:
+        try:
+            ctypes.CDLL(str(p), mode=ctypes.RTLD_GLOBAL)
+        except OSError:
+            # Missing transitive dep (e.g. libcuda.so.1 driver) — leave it;
+            # the Embedder probe/fallback handles an unusable GPU provider.
+            continue
+
+
+# Preload before any session is created.
+_preload_bundled_nvidia_libs()
 
 #: Fastembed model identifier — must match a model in fastembed's registry.
 MODEL_NAME = "BAAI/bge-small-en-v1.5"

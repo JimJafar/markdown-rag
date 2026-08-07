@@ -1,5 +1,7 @@
 """Unit tests for the in-memory index build and embeddings."""
 
+import os
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 import numpy as np
@@ -63,6 +65,22 @@ def test_tokenise_filters_stopwords():
 
 def test_tokenise_keeps_meaningful_tokens():
     assert "embedding" in _tokenise("embedding and retrieval")
+
+
+def test_preload_noop_without_nvidia_wheels(monkeypatch):
+    # No nvidia wheels installed -> preload is a clean no-op (no crash, no
+    # env mutation).
+    def fake_distribution(name):
+        raise PackageNotFoundError(name)
+
+    import importlib.metadata as im
+
+    monkeypatch.setattr(im, "distribution", fake_distribution)
+    from markdown_rag.index import _preload_bundled_nvidia_libs
+
+    env_before = os.environ.get("LD_LIBRARY_PATH", None)
+    assert _preload_bundled_nvidia_libs() is None
+    assert os.environ.get("LD_LIBRARY_PATH", None) == env_before
 
 
 def test_index_injects_document_title(tmp_path):
