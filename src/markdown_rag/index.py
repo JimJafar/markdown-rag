@@ -201,7 +201,11 @@ class Embedder:
             self._model = self._build(self.providers)
 
     def embed(self, texts: Iterable[str]) -> list[np.ndarray]:
-        return list(self._model.passage_embed(texts))
+        # Smaller batches on GPU: attention buffers scale with batch size and
+        # can exceed VRAM at fastembed's default 256 (measured OOM on a 16GB
+        # card). CPU batches stay large for throughput.
+        batch = 32 if self.active_provider != "CPUExecutionProvider" else 256
+        return list(self._model.passage_embed(texts, batch_size=batch))
 
     def query_embed(self, query: str) -> Iterable[np.ndarray]:
         return self._model.query_embed(query)
