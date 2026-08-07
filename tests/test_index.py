@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from markdown_rag.chunking import chunk_vault
-from markdown_rag.index import Embedder, build_index
+from markdown_rag.index import Embedder, _tokenise, build_index
 
 FIXTURES = Path(__file__).parent / "fixtures" / "vault"
 
@@ -53,6 +53,46 @@ def test_embedder_returns_normalised_vectors(tmp_path):
 def test_index_has_bm25_corpus(index):
     assert "bm25_corpus" in index
     assert len(index["bm25_corpus"]) == len(index["chunks"])
+
+
+def test_tokenise_filters_stopwords():
+    # Query words like "what do we know about the" are common to every doc;
+    # scoring them flattens BM25. They must be filtered out.
+    assert _tokenise("what do we know about the librarian") == ["librarian"]
+
+
+def test_tokenise_keeps_meaningful_tokens():
+    assert "embedding" in _tokenise("embedding and retrieval")
+
+
+def test_index_injects_document_title(tmp_path):
+    # A chunk's embedded/BM25 text must carry the document title so identity
+    # (e.g. "The Librarian" in the frontmatter title) is matchable.
+    p = tmp_path / "note.md"
+    index = build_index(
+        [
+            {
+                "path": str(p),
+                "heading_path": "# Intro",
+                "text": "Body text.",
+                "metadata": {"title": "The Librarian Notes"},
+            }
+        ]
+    )
+    # BM25 corpus for the chunk is title + text tokens.
+    assert "librarian" in index["bm25_corpus"][0]
+
+
+def test_index_has_documents_grouping(index):
+    # build_index must group chunks by source document for doc-level retrieval.
+    assert "documents" in index
+    paths = {c["path"] for c in index["chunks"]}
+    assert {d["path"] for d in index["documents"]} == paths
+    # each document carries its chunks and title
+    d = index["documents"][0]
+    assert "title" in d
+    assert "text" in d
+    assert "chunk_idx" in d
 
 
 # --- provider auto-detection (GPU first, CPU fallback) ---

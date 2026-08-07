@@ -54,15 +54,38 @@ def preferred_providers() -> list[str]:
 #: Tokenise for BM25: lowercase, split on non-alphanumeric runs.
 _TOKENISE_SPLIT = None
 
+#: Stopwords filtered from BM25 tokens. Query words like "what do we know
+#: about the" occur in nearly every document; scoring them flattens BM25
+#: scores to a useless plateau, so they are removed.
+_STOPWORDS = frozenset(
+    """
+    a about an and are as at be been but by can could did do does for from
+    had has have he her hers him his how i if in into is it its know me
+    might more most my no nor not of on or our ours she should so some such
+    than that the their theirs them then there these they this those to too
+    up upon us was we were what when where which while who whom why will
+    with would you your yours
+    """.split()
+)
+
 
 def _tokenise(text: str) -> list[str]:
-    """Simple tokeniser shared by queries and the corpus."""
+    """Tokeniser shared by queries and the corpus; filters stopwords and
+    single-character tokens."""
     out: list[str] = []
     for word in text.lower().split():
         cleaned = "".join(ch for ch in word if ch.isalnum())
-        if cleaned:
+        if cleaned and len(cleaned) > 1 and cleaned not in _STOPWORDS:
             out.append(cleaned)
     return out
+
+
+def _doc_title(chunk: dict[str, Any]) -> str:
+    """Document title for a chunk: frontmatter title, else filename stem."""
+    title = chunk.get("metadata", {}).get("title")
+    if title:
+        return str(title)
+    return Path(chunk["path"]).stem
 
 
 class Embedder:
@@ -126,10 +149,18 @@ class Embedder:
 def build_index(chunks: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the in-memory hybrid index from chunk dicts.
 
+    Each chunk is embedded and BM25'd as ``<document title>. <chunk text>``
+    so the document's identity (frontmatter title) is matchable — without
+    this, a note titled "The Librarian" is invisible to its own name. The
+    path is deliberately NOT included in the weighted text: folder names
+    like ``Work/The Librarian/`` repeat across many documents and would
+    flood the ranking with a ubiquitous token.
+
     Returns:
-        {"chunks": [...], "embeddings": np.ndarray, "bm25_corpus": [...], "dim": int}
+        {"chunks": [...], "embeddings": np.ndarray, "bm25_corpus": [...],
+         "dim": int, "documents": [...]}
     """
-    texts = [c["text"] for c in chunks]
+    texts = [f"{_doc_title(c)}. {c['text']}" for c in chunks]
     embedder = Embedder()
     logging.info("embedding %d chunks on %s", len(texts), embedder.active_provider)
     vectors = list(embedder.embed(texts))
@@ -141,12 +172,42 @@ def build_index(chunks: list[dict[str, Any]]) -> dict[str, Any]:
 
     bm25_corpus = [_tokenise(t) for t in texts]
 
+    documents = _group_documents(chunks)
+
     return {
         "chunks": chunks,
         "embeddings": matrix,
         "bm25_corpus": bm25_corpus,
         "dim": matrix.shape[1],
+        "documents": documents,
     }
+
+
+def _group_documents(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group chunks by source file into document records.
+
+    Returns a list of {"title", "path", "text", "chunk_idx"} — the full
+    document text joined from its chunks, plus the indices of its chunks in
+    the flat chunk list (for citation mapping).
+    """
+    by_path: dict[str, list[int]] = {}
+    for i, c in enumerate(chunks):
+        by_path.setdefault(c["path"], []).append(i)
+
+    documents: list[dict[str, Any]] = []
+    for path, idxs in by_path.items():
+        doc_chunks = [chunks[i] for i in idxs]
+        title = _doc_title(doc_chunks[0])
+        text = "\n\n".join(c["text"] for c in doc_chunks)
+        documents.append(
+            {
+                "title": title,
+                "path": path,
+                "text": text,
+                "chunk_idx": idxs,
+            }
+        )
+    return documents
 
 
 def build_index_from_vault(vault_dir: Path) -> dict[str, Any]:

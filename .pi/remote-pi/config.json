@@ -1,0 +1,4 @@
+{
+  "agent_name": "The \"G\" in \"RAG\" is generated. As in a generated, human readable answer to the question. The chunks are only to prove where the LLM got its information from.",
+  "auto_start_relay": true
+}
