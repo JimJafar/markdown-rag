@@ -40,14 +40,18 @@ curl -X POST http://127.0.0.1:8000/retrieve \
   -d '{"query": "what do we know about X", "k": 5}'
 ```
 
-Both return the same shape — the top-k chunks sorted by relevance, with no vault-structure knowledge required:
+Both return the same shape — the top-k **whole documents** sorted by relevance, each with its best-matching chunks as citations, so an agent can answer document-level questions and prove where the answer came from. No vault-structure knowledge required:
 
 ```json
 [
   {
-    "path": "vault/overview.md",
-    "chunk": "This vault documents the markdown-rag server, a tool for...",
-    "score": 0.0167
+    "title": "The Librarian Proposal",
+    "path": "vault/The Librarian Proposal.md",
+    "text": "The goal is to implement a context-aware, trust-scored memory...",
+    "score": 1.0024,
+    "citations": [
+      {"chunk": "The Librarian is an MCP (Model Context Protocol) server that manages...", "score": 0.8912}
+    ]
   }
 ]
 ```
@@ -58,7 +62,7 @@ Both return the same shape — the top-k chunks sorted by relevance, with no vau
 
 - **Chunking** is heading-aware: it splits at heading boundaries, carries the heading path (e.g. `# Intro > ## Architecture`) as context, and treats leading `---` frontmatter as metadata.
 - **Embedding** uses a bundled `BAAI/bge-small-en-v1.5` ONNX model (384-dim, ~67 MB) via fastembed, loaded from package data — never downloaded.
-- **Retrieval** fuses lexical search (BM25) and semantic search (dense cosine) with reciprocal-rank fusion, so both exact identifiers and paraphrase match well.
+- **Retrieval** is document-level: it ranks whole documents (dense semantic similarity as the primary signal, with a supporting BM25 lexical pass for exact-term queries) and returns each document's best-matching chunks as citations.
 - **Index** is in-memory only: rebuild on start, no DB, no persistence.
 
 ## GPU (optional)
