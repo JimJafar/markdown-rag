@@ -53,3 +53,81 @@ def test_embedder_returns_normalised_vectors(tmp_path):
 def test_index_has_bm25_corpus(index):
     assert "bm25_corpus" in index
     assert len(index["bm25_corpus"]) == len(index["chunks"])
+
+
+# --- provider auto-detection (GPU first, CPU fallback) ---
+
+
+def test_preferred_providers_cpu_fallback(monkeypatch):
+    monkeypatch.setattr(
+        "onnxruntime.get_available_providers",
+        lambda: ["AzureExecutionProvider", "CPUExecutionProvider"],
+    )
+    from markdown_rag.index import preferred_providers
+
+    assert preferred_providers() == ["CPUExecutionProvider"]
+
+
+def test_preferred_providers_prefers_cuda_over_tensorrt(monkeypatch):
+    monkeypatch.setattr(
+        "onnxruntime.get_available_providers",
+        lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
+    from markdown_rag.index import preferred_providers
+
+    assert preferred_providers() == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+
+def test_preferred_providers_rocm_when_no_cuda(monkeypatch):
+    monkeypatch.setattr(
+        "onnxruntime.get_available_providers",
+        lambda: ["ROCMExecutionProvider", "CPUExecutionProvider"],
+    )
+    from markdown_rag.index import preferred_providers
+
+    assert preferred_providers() == ["ROCMExecutionProvider", "CPUExecutionProvider"]
+
+
+# --- runtime GPU probe + CPU fallback ---
+
+
+def test_embedder_keeps_gpu_when_probe_succeeds(monkeypatch):
+    import markdown_rag.index as idx
+
+    built: list = []
+
+    class FakeModel:
+        def __init__(self, **kwargs):
+            self.providers = kwargs["providers"]
+            built.append(kwargs["providers"])
+
+        def passage_embed(self, texts):
+            yield []
+
+    monkeypatch.setattr(idx, "TextEmbedding", FakeModel)
+    e = idx.Embedder(providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert e.active_provider == "CUDAExecutionProvider"
+    assert len(built) == 1
+
+
+def test_embedder_falls_back_to_cpu_when_gpu_probe_fails(monkeypatch, caplog):
+    import markdown_rag.index as idx
+
+    built: list = []
+
+    class FakeModel:
+        def __init__(self, **kwargs):
+            self.providers = kwargs["providers"]
+            built.append(kwargs["providers"])
+
+        def passage_embed(self, texts):
+            if self.providers[0] != "CPUExecutionProvider":
+                raise RuntimeError("simulated missing cuDNN")
+            yield []
+
+    monkeypatch.setattr(idx, "TextEmbedding", FakeModel)
+    e = idx.Embedder(providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert e.active_provider == "CPUExecutionProvider"
+    assert e.providers == ["CPUExecutionProvider"]
+    assert len(built) == 2  # rebuilt once on CPU
+    assert "falling back to CPU" in caplog.text

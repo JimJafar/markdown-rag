@@ -61,6 +61,33 @@ Both return the same shape — the top-k chunks sorted by relevance, with no vau
 - **Retrieval** fuses lexical search (BM25) and semantic search (dense cosine) with reciprocal-rank fusion, so both exact identifiers and paraphrase match well.
 - **Index** is in-memory only: rebuild on start, no DB, no persistence.
 
+## GPU (optional)
+
+Embedding runs on CPU by default and needs no setup. When GPU libraries are present, markdown-rag auto-detects them — GPU first, CPU as fallback — and logs which provider it picked on start:
+
+```text
+INFO embedding 7193 chunks on CUDAExecutionProvider
+```
+
+If a GPU provider is advertised but can't actually run (e.g. missing cuDNN), a one-embed probe at startup falls back to CPU automatically with a warning — the server still starts.
+
+To enable GPU on an existing install:
+
+```sh
+pipx install markdown-rag
+pipx inject markdown-rag fastembed-gpu                # swaps onnxruntime for the CUDA build
+pipx inject markdown-rag nvidia-cudnn-cu12 nvidia-cublas-cu12 nvidia-cufft-cu12
+```
+
+Install `fastembed-gpu` **after** the base install, as above — requesting both in one command resolves without error but silently leaves the CPU build in place; the startup log line is how you tell which you got. Then expose the NVIDIA libs to the loader when starting the server:
+
+```sh
+export LD_LIBRARY_PATH="$(echo $HOME/.local/share/pipx/venvs/markdown-rag/lib/python*/site-packages/nvidia/*/lib | tr ' ' ':')"
+markdown-rag serve /path/to/vault
+```
+
+The CUDA/cuDNN versions must match what onnxruntime-gpu expects (CUDA 12 + cuDNN 9 for onnxruntime 1.28). On a machine whose system CUDA is newer (e.g. CUDA 13 in `/opt/cuda`), the pip NVIDIA packages supply the exact CUDA 12 libs onnxruntime looks for. Measured on an RTX 5060 Ti: ~840 vec/s vs ~24 vec/s CPU — a thousand-note vault indexes in seconds.
+
 ## Development
 
 ```sh
