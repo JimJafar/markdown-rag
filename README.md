@@ -7,7 +7,7 @@ Fully offline, runs on CPU in RAM — no cloud, no API keys, no heavy dependenci
 ## Install (once)
 
 ```sh
-pipx install git+https://github.com/<you>/markdown-rag.git
+pipx install git+https://github.com/JimJafar/markdown-rag.git
 ```
 
 pipx gives you an isolated install and a global `markdown-rag` command — no per-vault setup needed. A small ONNX embedding model (~67 MB) is bundled, so there is no download at first run.
