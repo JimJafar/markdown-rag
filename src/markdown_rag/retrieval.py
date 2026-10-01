@@ -75,7 +75,7 @@ def retrieve(
     the document's best-matching chunks [{chunk, score}]. Sorted by
     relevance, highest first. Empty query returns [].
     """
-    if not query.strip():
+    if not query.strip() or not index["documents"]:
         return []
 
     query_tokens = _tokenise(query)

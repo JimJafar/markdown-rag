@@ -9,7 +9,7 @@ from pathlib import Path
 
 import uvicorn
 
-from markdown_rag.index import build_index_from_vault
+from markdown_rag.refresh import LiveIndex, start_refresher
 from markdown_rag.server import create_app
 
 
@@ -42,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="127.0.0.1",
         help="interface to bind (default: localhost only)",
     )
+    serve.add_argument(
+        "--refresh-interval",
+        type=float,
+        default=300.0,
+        help="seconds between checks for added, changed or deleted notes; only those are "
+        "re-embedded (default: 300; 0 disables)",
+    )
     return parser
 
 
@@ -63,10 +70,14 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(1)
 
     logging.info("indexing vault %s ...", vault)
-    index = build_index_from_vault(vault)
-    logging.info("index built: %d chunks", len(index["chunks"]))
+    live = LiveIndex(vault)
+    live.refresh()
+    logging.info("index built: %d chunks", len(live.current["chunks"]))
+    if args.refresh_interval > 0:
+        start_refresher(live, args.refresh_interval)
+        logging.info("checking for changed notes every %gs", args.refresh_interval)
 
-    app = create_app(index)
+    app = create_app(live, embedder=live.embedder)
     logging.info("markdown-rag listening on %s:%d", args.host, args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

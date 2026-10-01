@@ -55,11 +55,11 @@ def test_main_fails_fast_when_port_busy(monkeypatch, caplog):
     try:
         called: list = []
 
-        def fake_build(vault):
+        def fake_live_index(vault, *args, **kwargs):
             called.append(vault)
             raise AssertionError("indexing must not start when the port is busy")
 
-        monkeypatch.setattr(cli, "build_index_from_vault", fake_build)
+        monkeypatch.setattr(cli, "LiveIndex", fake_live_index)
         with pytest.raises(SystemExit) as exc:
             cli.main(["serve", "/some/vault", "--port", str(port)])
         assert exc.value.code == 1
@@ -80,6 +80,12 @@ def test_parser_default_port():
     p = build_parser()
     args = p.parse_args(["serve", "/vault"])
     assert args.port == 8000
+
+
+def test_parser_refresh_interval_defaults_to_five_minutes_and_can_be_disabled():
+    p = build_parser()
+    assert p.parse_args(["serve", "/vault"]).refresh_interval == 300
+    assert p.parse_args(["serve", "/vault", "--refresh-interval", "0"]).refresh_interval == 0
 
 
 def test_parser_custom_port():

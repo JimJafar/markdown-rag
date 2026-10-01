@@ -211,41 +211,48 @@ class Embedder:
         return self._model.query_embed(query)
 
 
-def build_index(chunks: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build the in-memory hybrid index from chunk dicts.
+def chunk_texts(chunks: list[dict[str, Any]]) -> list[str]:
+    """The text each chunk is embedded and BM25'd as: ``<document title>. <chunk text>``.
 
-    Each chunk is embedded and BM25'd as ``<document title>. <chunk text>``
-    so the document's identity (frontmatter title) is matchable — without
-    this, a note titled "The Librarian" is invisible to its own name. The
-    path is deliberately NOT included in the weighted text: folder names
-    like ``Work/The Librarian/`` repeat across many documents and would
+    The document's identity (frontmatter title) is included so a note titled "The
+    Librarian" can be matched by its own name. The path is deliberately NOT included:
+    folder names like ``Work/The Librarian/`` repeat across many documents and would
     flood the ranking with a ubiquitous token.
+    """
+    return [f"{_doc_title(c)}. {c['text']}" for c in chunks]
+
+
+def normalise(vectors: list[np.ndarray], dim: int = 0) -> np.ndarray:
+    """Stack embeddings into a float32 matrix with unit rows (cosine == dot product)."""
+    if not vectors:
+        return np.zeros((0, dim), dtype=np.float32)
+    matrix = np.array(vectors, dtype=np.float32)
+    matrix /= np.linalg.norm(matrix, axis=1, keepdims=True)
+    return np.nan_to_num(matrix)
+
+
+def assemble_index(chunks: list[dict[str, Any]], matrix: np.ndarray) -> dict[str, Any]:
+    """Build the index from chunks and their already-normalised embedding rows.
 
     Returns:
         {"chunks": [...], "embeddings": np.ndarray, "bm25_corpus": [...],
          "dim": int, "documents": [...]}
     """
-    texts = [f"{_doc_title(c)}. {c['text']}" for c in chunks]
-    embedder = Embedder()
-    logging.info("embedding %d chunks on %s", len(texts), embedder.active_provider)
-    vectors = list(embedder.embed(texts))
-
-    matrix = np.array(vectors, dtype=np.float32)
-    # Normalise rows so cosine similarity == dot product.
-    matrix /= np.linalg.norm(matrix, axis=1, keepdims=True)
-    matrix = np.nan_to_num(matrix)
-
-    bm25_corpus = [_tokenise(t) for t in texts]
-
-    documents = _group_documents(chunks)
-
     return {
         "chunks": chunks,
         "embeddings": matrix,
-        "bm25_corpus": bm25_corpus,
+        "bm25_corpus": [_tokenise(t) for t in chunk_texts(chunks)],
         "dim": matrix.shape[1],
-        "documents": documents,
+        "documents": _group_documents(chunks),
     }
+
+
+def build_index(chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build the in-memory hybrid index from chunk dicts (embeds every chunk)."""
+    texts = chunk_texts(chunks)
+    embedder = Embedder()
+    logging.info("embedding %d chunks on %s", len(texts), embedder.active_provider)
+    return assemble_index(chunks, normalise(list(embedder.embed(texts))))
 
 
 def _group_documents(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -18,7 +18,9 @@ pipx gives you an isolated install and a global `markdown-rag` command — no pe
 markdown-rag serve /path/to/your/vault
 ```
 
-The server indexes every `.md` file under the directory (recursively), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. The index is rebuilt from scratch on every start — a few seconds for a small vault, a few minutes for a thousand-note one — and there is no persistent store.
+The server indexes every `.md` file under the directory (recursively), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. The index is built from scratch on start — a few seconds for a small vault, a few minutes for a thousand-note one — and there is no persistent store.
+
+While it runs, the server checks the vault every 5 minutes and re-embeds only the notes that were added or changed (by modification time and size), dropping deleted ones; searches keep answering from the previous index until the new one is ready. It polls rather than watching for file events, so it also sees changes on network mounts and synced drives. Change the interval with `--refresh-interval SECONDS`, or turn it off with `--refresh-interval 0`.
 
 ```sh
 markdown-rag serve /path/to/vault --port 8080 --host 127.0.0.1
@@ -56,14 +58,14 @@ Both return the same shape — the top-k **whole documents** sorted by relevance
 ]
 ```
 
-`GET /health` returns `{"status": "ok"}` so agents can check readiness.
+`GET /health` returns `{"status": "ok"}` so agents can check readiness. `GET /status` reports `{"documents", "chunks", "last_refresh"}`.
 
 ## How it works
 
 - **Chunking** is heading-aware: it splits at heading boundaries, carries the heading path (e.g. `# Intro > ## Architecture`) as context, and treats leading `---` frontmatter as metadata.
 - **Embedding** uses a bundled `BAAI/bge-small-en-v1.5` ONNX model (384-dim, ~67 MB) via fastembed, loaded from package data — never downloaded.
 - **Retrieval** is document-level: it ranks whole documents (dense semantic similarity as the primary signal, with a supporting BM25 lexical pass for exact-term queries) and returns each document's best-matching chunks as citations.
-- **Index** is in-memory only: rebuild on start, no DB, no persistence.
+- **Index** is in-memory only: full build on start, then incremental refresh of changed notes; no DB, no persistence.
 
 ## GPU (optional)
 
