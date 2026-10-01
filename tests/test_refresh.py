@@ -154,11 +154,26 @@ def test_unreadable_note_keeps_last_good_version_and_is_retried(vault):
     assert "Cars are fixed now." in [c["text"] for c in live.current["chunks"]]
 
 
-def test_emptied_vault_serves_no_results(vault):
+def test_vault_that_comes_up_empty_keeps_the_current_index(vault, caplog):
+    # An unmounted network share looks like an empty directory; wiping the index
+    # would force a full re-embed when it comes back.
     live = LiveIndex(vault, FakeEmbedder())
     live.refresh()
+    before = live.current
     for note in vault.glob("*.md"):
         note.unlink()
+
+    result = live.refresh()
+
+    assert not result.updated
+    assert live.current is before
+    assert "no notes" in caplog.text
+
+
+def test_empty_vault_at_start_serves_no_results(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    live = LiveIndex(empty, FakeEmbedder())
 
     live.refresh()
 

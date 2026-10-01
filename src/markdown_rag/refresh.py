@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from markdown_rag.chunking import chunk_file
+from markdown_rag.chunking import chunk_file, markdown_files
 from markdown_rag.index import Embedder, assemble_index, chunk_texts, normalise
 
 #: A file's change stamp: (st_mtime_ns, st_size).
@@ -53,23 +53,6 @@ class _Note:
     vectors: np.ndarray
 
 
-def scan_vault(vault: Path) -> dict[str, Signature]:
-    """Every markdown file under the vault (same selection as chunk_vault) with its stamp."""
-    if not vault.exists():
-        raise FileNotFoundError(vault)
-    found: dict[str, Signature] = {}
-    for path in sorted(vault.rglob("*")):
-        if path.suffix.lower() != ".md":
-            continue
-        try:
-            stat = path.stat()
-        except OSError:  # deleted between listing and stat
-            continue
-        if path.is_file():
-            found[str(path)] = (stat.st_mtime_ns, stat.st_size)
-    return found
-
-
 class LiveIndex:
     """The current index for a vault, refreshed incrementally."""
 
@@ -87,7 +70,12 @@ class LiveIndex:
         """Bring the index up to date with the vault; embeds only added or changed notes."""
         with self._lock:
             started = time.monotonic()
-            seen = scan_vault(self.vault)
+            seen = markdown_files(self.vault)
+            if not seen and self._notes:
+                logging.warning(
+                    "refresh: %s has no notes now; keeping the current index "
+                    "(is the vault unmounted?)", self.vault)
+                return RefreshResult(seconds=time.monotonic() - started)
             removed = [path for path in self._notes if path not in seen]
             stale = [path for path, sig in seen.items()
                      if path not in self._notes or self._notes[path].signature != sig]

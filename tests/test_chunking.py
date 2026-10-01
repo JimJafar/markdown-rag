@@ -138,3 +138,24 @@ def test_chunk_vault_empty_dir(tmp_path):
 def test_chunk_vault_missing_dir():
     with pytest.raises(FileNotFoundError):
         chunk_vault(Path("/definitely/not/here"))
+
+
+def test_chunk_vault_skips_hidden_directories(tmp_path):
+    # Obsidian ignores dot-folders; a vault's .git or .obsidian holds no notes to index.
+    make_file(tmp_path, "note.md", "# Note\n\nVisible text.")
+    make_file(tmp_path, ".git/info/readme.md", "# Git\n\nGit internals.")
+    make_file(tmp_path, "sub/.trash/old.md", "# Old\n\nDeleted note.")
+    texts = [c["text"] for c in chunk_vault(tmp_path)]
+    assert texts == ["Visible text."]
+
+
+def test_markdown_files_lists_stamps_for_notes_only(tmp_path):
+    from markdown_rag.chunking import markdown_files
+
+    note = make_file(tmp_path, "a/Note.MD", "# Note\n\nText.")
+    make_file(tmp_path, "a/image.png", "not markdown")
+    make_file(tmp_path, ".obsidian/workspace.md", "# hidden")
+    found = markdown_files(tmp_path)
+    assert list(found) == [str(note)]
+    mtime_ns, size = found[str(note)]
+    assert size == note.stat().st_size and mtime_ns == note.stat().st_mtime_ns

@@ -18,7 +18,7 @@ pipx gives you an isolated install and a global `markdown-rag` command — no pe
 markdown-rag serve /path/to/your/vault
 ```
 
-The server indexes every `.md` file under the directory (recursively), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. The index is built from scratch on start — a few seconds for a small vault, a few minutes for a thousand-note one — and there is no persistent store.
+The server indexes every `.md` file under the directory (recursively, skipping hidden folders such as `.git`, `.obsidian` and `.trash`, as Obsidian does), builds an in-memory hybrid index, and listens on `127.0.0.1:8000`. The index is built from scratch on start — a few seconds for a small vault, a few minutes for a thousand-note one — and there is no persistent store.
 
 While it runs, the server checks the vault every 5 minutes and re-embeds only the notes that were added or changed (by modification time and size), dropping deleted ones; searches keep answering from the previous index until the new one is ready. It polls rather than watching for file events, so it also sees changes on network mounts and synced drives. Change the interval with `--refresh-interval SECONDS`, or turn it off with `--refresh-interval 0`.
 

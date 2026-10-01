@@ -8,6 +8,7 @@ metadata.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -142,12 +143,38 @@ def chunk_file(path: Path) -> list[dict[str, Any]]:
     return chunks
 
 
-def chunk_vault(vault_dir: Path) -> list[dict[str, Any]]:
-    """Chunk every markdown file under a vault directory (recursive)."""
+def markdown_files(vault_dir: Path) -> dict[str, tuple[int, int]]:
+    """Every markdown file under the vault, sorted by path, with its (mtime_ns, size).
+
+    Hidden directories (``.git``, ``.obsidian``, ``.trash`` ...) are skipped, as
+    Obsidian skips them. Walks with os.scandir so a network mount costs one listing
+    per directory: per-file stats come from the attributes the listing returned.
+    """
     if not vault_dir.exists():
         raise FileNotFoundError(vault_dir)
+    found: dict[str, tuple[int, int]] = {}
+    pending = [str(vault_dir)]
+    while pending:
+        try:
+            entries = list(os.scandir(pending.pop()))
+        except OSError:  # removed or unreadable mid-walk
+            continue
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    if not entry.name.startswith("."):
+                        pending.append(entry.path)
+                elif entry.name.lower().endswith(".md") and entry.is_file():
+                    stat = entry.stat()
+                    found[entry.path] = (stat.st_mtime_ns, stat.st_size)
+            except OSError:  # deleted between listing and stat
+                continue
+    return dict(sorted(found.items()))
+
+
+def chunk_vault(vault_dir: Path) -> list[dict[str, Any]]:
+    """Chunk every markdown file under a vault directory (recursive, skipping dot-folders)."""
     chunks: list[dict[str, Any]] = []
-    for path in sorted(vault_dir.rglob("*")):
-        if path.is_file() and path.suffix.lower() == ".md":
-            chunks.extend(chunk_file(path))
+    for path in markdown_files(vault_dir):
+        chunks.extend(chunk_file(Path(path)))
     return chunks
